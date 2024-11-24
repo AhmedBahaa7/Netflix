@@ -15,7 +15,7 @@ pipeline{
         }
         stage('Checkout from Git'){
             steps{
-                git branch: 'main', ssh: 'git@github.com:AhmedBahaa7/Netflix.git'
+                git branch: 'main', url: 'https://github.com/AhmedBahaa7/Netflix.git'
             }
         }
         stage("Sonarqube Analysis "){
@@ -32,6 +32,11 @@ pipeline{
                     waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token' 
                 }
             } 
+        }
+        stage('Install Dependencies') {
+            steps {
+                sh "npm install"
+            }
         }
         stage('OWASP FS SCAN') {
             steps {
