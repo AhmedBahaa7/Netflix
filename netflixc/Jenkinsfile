@@ -1,95 +1,80 @@
-pipeline {
+pipeline{
     agent any
-    tools {
+    tools{
         jdk 'jdk17'
         nodejs 'node16'
     }
     environment {
-        SCANNER_HOME = tool 'sonar-scanner'
+        SCANNER_HOME=tool 'sonar-scanner'
     }
     stages {
-        stage('Clean Workspace') {
-            steps {
+        stage('clean workspace'){
+            steps{
                 cleanWs()
             }
         }
-        stage('Checkout from Git') {
-            steps {
-                git branch: 'main', url: 'https://github.com/AhmedBahaa7/Netflix.git'
+        stage('Checkout from Git'){
+            steps{
+                sh ''' git clone https://github.com/AhmedBahaa7/Netflix.git '''
             }
         }
-        stage("SonarQube Analysis") {
-            steps {
+        stage("Sonarqube Analysis "){
+            steps{
                 withSonarQubeEnv('sonar-server') {
-                    sh '''
-                        $SCANNER_HOME/bin/sonar-scanner \
-                        -Dsonar.projectName=Netflix \
-                        -Dsonar.projectKey=Netflix \
-                        -Dsonar.login=$SONAR_AUTH_TOKEN
-                    '''
+                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=Netflix \
+                    -Dsonar.projectKey=Netflix '''
                 }
             }
         }
-        stage("Quality Gate") {
-            steps {
+        stage("quality gate"){
+           steps {
                 script {
-                    def qualityGate = waitForQualityGate()
-                    if (qualityGate.status != 'OK') {
-                        error "Pipeline aborted due to quality gate failure: ${qualityGate.status}"
-                    }
+                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token' 
                 }
-            }
+            } 
         }
-        stage('OWASP Dependency Check') {
+        stage('OWASP FS SCAN') {
             steps {
                 dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
                 dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
             }
         }
-        stage('Trivy Filesystem Scan') {
+        stage('TRIVY FS SCAN') {
             steps {
-                sh "trivy fs . > trivy_fs_scan_${env.BUILD_NUMBER}.txt"
+                sh "trivy fs . > trivyfs.txt"
             }
         }
-        stage("Docker Build & Push") {
-            steps {
-                script {
-                    sh "cp var/lib/jenkins/workspace/Netflix/netflixc/Dockerfile var/lib/jenkins/workspace/Netflix/ " // Debugging: ensure Dockerfile is present
-                    withDockerRegistry(credentialsId: 'Docker-cred', toolName: 'docker') {
-                        sh '''
-                            docker build --build-arg TMDB_V3_API_KEY=810db80c487ebc70067a80437cd3ecab -t netflix .
-                            docker tag netflix ahmedbahaa2/netflix:latest
-                            docker push ahmedbahaa2/netflix:latest
-                        '''
+        stage("Docker Build & Push"){
+            steps{
+                script{
+                   withDockerRegistry(credentialsId: 'Docker-cred', toolName: 'docker'){   
+                       sh "docker build --build-arg TMDB_V3_API_KEY=810db80c487ebc70067a80437cd3ecab -t netflix ."
+                       sh "docker tag netflix ahmedbahaa2/netflix:latest "
+                       sh "docker push ahmedbahaa2/netflix:latest "
                     }
                 }
             }
         }
-        stage("Trivy Image Scan") {
-            steps {
-                sh "trivy image ahmedbahaa2/netflix:latest > trivy_image_scan_${env.BUILD_NUMBER}.txt"
+        stage("TRIVY"){
+            steps{
+                sh "trivy image ahmedbahaa2/netflix:latest > trivyimage.txt" 
             }
         }
-        stage('Deploy to Container') {
-            steps {
-                sh 'docker run -d --name netflix -p 8081:80 ahmedbahaa2/netflix:latest || true'
+        stage('Deploy to container'){
+            steps{
+                sh 'docker run -d --name netflix -p 8081:80 ahmedbahaa2/netflix:latest'
             }
         }
     }
     post {
-        always {
-            emailext(
-                attachLog: true,
-                subject: "Build '${currentBuild.result}' for ${env.JOB_NAME}",
-                body: """
-                    <p>Project: ${env.JOB_NAME}</p>
-                    <p>Build Number: ${env.BUILD_NUMBER}</p>
-                    <p>Build URL: <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
-                    <p>Attached: Dependency Check & Trivy Reports</p>
-                """,
-                to: 'ahmesbahaa151@gmail.com',
-                attachmentsPattern: 'dependency-check-report.xml,trivy_fs_scan_*.txt,trivy_image_scan_*.txt'
-            )
+     always {
+        emailext attachLog: true,
+            subject: "'${currentBuild.result}'",
+            body: "Project: ${env.JOB_NAME}<br/>" +
+                "Build Number: ${env.BUILD_NUMBER}<br/>" +
+                "URL: ${env.BUILD_URL}<br/>",
+            to: 'ahmesbahaa151@gmail.com',
+            attachmentsPattern: 'trivyfs.txt'
+           }
         }
     }
-}
