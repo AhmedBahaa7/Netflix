@@ -54,7 +54,7 @@ pipeline {
         stage("Docker Build & Push") {
             steps {
                 script {
-                    sh "ls -la" // Debugging: ensure Dockerfile is present
+                    sh "cp var/lib/jenkins/workspace/Netflix/netflixc/Dockerfile var/lib/jenkins/workspace/Netflix/ " // Debugging: ensure Dockerfile is present
                     withDockerRegistry(credentialsId: 'Docker-cred', toolName: 'docker') {
                         sh '''
                             docker build --build-arg TMDB_V3_API_KEY=810db80c487ebc70067a80437cd3ecab -t netflix .
